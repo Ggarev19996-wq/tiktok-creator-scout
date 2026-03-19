@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, Flame, TrendingUp, ShieldAlert, Sparkles, PlayCircle, BarChart3, CheckCircle2 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 
 const seedTrends = [
   {
@@ -191,9 +190,6 @@ export default function TikTokCreatorScoutDemo() {
   const [search, setSearch] = useState('');
   const [fileMeta, setFileMeta] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
-  const [dbTrends, setDbTrends] = useState([]);
-  const [trendsLoading, setTrendsLoading] = useState(true);
-  const [trendsError, setTrendsError] = useState('');
   const videoRef = useRef(null);
 
   const [inputs, setInputs] = useState({
@@ -208,10 +204,8 @@ export default function TikTokCreatorScoutDemo() {
     simplicity: 8,
   });
 
-  const sourceTrends = dbTrends.length > 0 ? dbTrends : seedTrends;
-
   const trendData = useMemo(() => {
-    return sourceTrends
+    return seedTrends
       .map((item) => ({ ...item, score: trendScore(item), label: trendLabel(item) }))
       .filter((item) => selectedCategories.includes(item.category))
       .filter((item) => {
@@ -220,7 +214,7 @@ export default function TikTokCreatorScoutDemo() {
         return [item.title, item.audio, item.category, item.region, item.note].join(' ').toLowerCase().includes(q);
       })
       .sort((a, b) => b.score - a.score);
-  }, [selectedCategories, search, sourceTrends]);
+  }, [selectedCategories, search]);
 
   const topNow = trendData.filter((t) => t.label === 'Уже в тренде');
   const topRising = trendData.filter((t) => t.label === 'Будет трендовым');
@@ -231,51 +225,6 @@ export default function TikTokCreatorScoutDemo() {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
-
-  useEffect(() => {
-    async function fetchTrends() {
-      setTrendsLoading(true);
-      setTrendsError('');
-
-      const { data, error } = await supabase
-        .from('trends')
-        .select('id, category, title, audio, region, velocity, engagement, repeatability, saturation, complexity, face_fit, risk, note, source_url, source_type, trend_status, is_active, created_at')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        setTrendsError('Не удалось загрузить тренды из Supabase. Используется локальное демо.');
-        setDbTrends([]);
-        setTrendsLoading(false);
-        return;
-      }
-
-      const mapped = (data || []).map((row) => ({
-        id: row.id,
-        category: row.category,
-        title: row.title,
-        audio: row.audio || 'Unknown audio',
-        region: row.region || 'Global',
-        velocity: row.velocity ?? 50,
-        engagement: row.engagement ?? 50,
-        repeatability: row.repeatability ?? 50,
-        saturation: row.saturation ?? 50,
-        complexity: row.complexity ?? 50,
-        faceFit: row.face_fit ?? 50,
-        risk: row.risk ?? 50,
-        note: row.note || 'Описание пока не заполнено.',
-        sourceUrl: row.source_url || '',
-        sourceType: row.source_type || 'manual',
-        trendStatus: row.trend_status || 'hot',
-        isActive: row.is_active ?? true,
-      }));
-
-      setDbTrends(mapped);
-      setTrendsLoading(false);
-    }
-
-    fetchTrends();
-  }, []);
 
   const durationScore = useMemo(() => {
     if (!fileMeta?.duration) return 65;
@@ -326,11 +275,11 @@ export default function TikTokCreatorScoutDemo() {
   }, [algorithmChance]);
 
   const matchedIdeas = useMemo(() => {
-    return [...sourceTrends]
+    return [...seedTrends]
       .map((item) => ({ ...item, score: Math.round(item.repeatability * 0.35 + item.faceFit * 0.2 + item.velocity * 0.2 + inputs.trendMatch * 10 * 0.25) }))
       .sort((a, b) => b.score - a.score)
       .slice(0, 3);
-  }, [inputs.trendMatch, sourceTrends]);
+  }, [inputs.trendMatch]);
 
   const toggleCategory = (category) => {
     setSelectedCategories((prev) =>
@@ -408,12 +357,6 @@ export default function TikTokCreatorScoutDemo() {
               {label}
             </button>
           ))}
-        </div>
-
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
-          <span className="font-medium text-slate-900">Источник трендов:</span>{' '}
-          {trendsLoading ? 'загрузка...' : dbTrends.length > 0 ? 'Supabase' : 'локальное демо'}
-          {trendsError ? <span className="text-rose-600"> · {trendsError}</span> : null}
         </div>
 
         {tab === 'dashboard' && (
