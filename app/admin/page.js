@@ -34,6 +34,8 @@ export default function AdminPage() {
   const [deactivateLoadingId, setDeactivateLoadingId] = useState("");
   const [restoreLoadingId, setRestoreLoadingId] = useState("");
   const [deleteLoadingId, setDeleteLoadingId] = useState("");
+  const [autoparseLoading, setAutoparseLoading] = useState(false);
+  const [autoparseRegion, setAutoparseRegion] = useState("GLOBAL");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [trends, setTrends] = useState([]);
@@ -52,7 +54,7 @@ export default function AdminPage() {
     const { data, error } = await supabase
       .from("trends")
       .select(
-        "id, category, title, audio, region, velocity, engagement, repeatability, saturation, complexity, face_fit, risk, note, trend_status, is_active, created_at"
+        "id, category, title, audio, region, velocity, engagement, repeatability, saturation, complexity, face_fit, risk, note, trend_status, is_active, created_at, source_type"
       )
       .order("created_at", { ascending: false });
 
@@ -235,6 +237,48 @@ export default function AdminPage() {
     }
   }
 
+  async function runAutoparse() {
+    if (!form.adminPassword) {
+      setError("Сначала введи пароль администратора в верхнем поле.");
+      return;
+    }
+
+    setAutoparseLoading(true);
+    setMessage("");
+    setError("");
+
+    try {
+      const response = await fetch("/api/autoparse/run", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          adminPassword: form.adminPassword,
+          region: autoparseRegion,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setError(result.error || "Не удалось запустить автопарсинг.");
+        setAutoparseLoading(false);
+        return;
+      }
+
+      setMessage(
+        `Автопарсинг выполнен. Получено: ${result.items_fetched}, обновлено трендов: ${result.trends_upserted}.`
+      );
+
+      await loadTrends();
+    } catch {
+      setError("Произошла ошибка сети или сервера при автопарсинге.");
+    } finally {
+      setAutoparseLoading(false);
+    }
+  }
+
   const inputClass =
     "w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400";
   const cardClass =
@@ -251,7 +295,7 @@ export default function AdminPage() {
               </h1>
               <p className="text-slate-600 mt-2">
                 Здесь ты можешь добавлять, редактировать, восстанавливать,
-                отключать и удалять тренды.
+                отключать, удалять и запускать автопарсинг.
               </p>
             </div>
 
@@ -261,6 +305,41 @@ export default function AdminPage() {
             >
               На главную
             </Link>
+          </div>
+        </div>
+
+        <div className={`${cardClass} mt-6 space-y-4`}>
+          <div>
+            <h2 className="text-2xl font-semibold">Автопарсинг</h2>
+            <p className="text-slate-600 mt-1">
+              Запуск ручного автосбора трендов из Creative Center.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Регион парсинга
+              </label>
+              <input
+                type="text"
+                value={autoparseRegion}
+                onChange={(e) => setAutoparseRegion(e.target.value)}
+                className={inputClass}
+                placeholder="GLOBAL"
+              />
+            </div>
+
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={runAutoparse}
+                disabled={autoparseLoading}
+                className="px-5 py-3 rounded-2xl text-sm font-medium bg-slate-900 text-white disabled:opacity-60"
+              >
+                {autoparseLoading ? "Запуск..." : "Запустить автопарсинг"}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -476,7 +555,8 @@ export default function AdminPage() {
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div>
                       <div className="text-xs text-slate-500">
-                        {trend.category} · {trend.region || "Global"}
+                        {trend.category} · {trend.region || "Global"} ·{" "}
+                        {trend.source_type || "manual"}
                       </div>
                       <div className="font-semibold text-lg mt-1">
                         {trend.title}
@@ -499,7 +579,9 @@ export default function AdminPage() {
                       {trend.is_active ? (
                         <button
                           type="button"
-                          onClick={() => setTrendActiveState(trend.id, false, "deactivate")}
+                          onClick={() =>
+                            setTrendActiveState(trend.id, false, "deactivate")
+                          }
                           disabled={deactivateLoadingId === trend.id}
                           className="px-4 py-2 rounded-2xl text-sm font-medium bg-slate-900 text-white disabled:opacity-60"
                         >
@@ -510,7 +592,9 @@ export default function AdminPage() {
                       ) : (
                         <button
                           type="button"
-                          onClick={() => setTrendActiveState(trend.id, true, "restore")}
+                          onClick={() =>
+                            setTrendActiveState(trend.id, true, "restore")
+                          }
                           disabled={restoreLoadingId === trend.id}
                           className="px-4 py-2 rounded-2xl text-sm font-medium border bg-white text-slate-700 border-slate-200 hover:border-slate-300 disabled:opacity-60"
                         >
