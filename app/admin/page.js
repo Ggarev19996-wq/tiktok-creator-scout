@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { supabase } from "../../lib/supabase";
 
 const initialForm = {
   adminPassword: "",
@@ -20,11 +21,20 @@ const initialForm = {
   trend_status: "rising",
 };
 
+function statusLabel(value) {
+  if (value === "hot") return "Уже в тренде";
+  if (value === "rising") return "Будет трендовым";
+  return "Лучше не повторять";
+}
+
 export default function AdminPage() {
   const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(false);
+  const [deactivateLoadingId, setDeactivateLoadingId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [trends, setTrends] = useState([]);
+  const [listLoading, setListLoading] = useState(true);
 
   function updateField(name, value) {
     setForm((prev) => ({
@@ -32,6 +42,30 @@ export default function AdminPage() {
       [name]: value,
     }));
   }
+
+  async function loadTrends() {
+    setListLoading(true);
+
+    const { data, error } = await supabase
+      .from("trends")
+      .select(
+        "id, category, title, audio, region, trend_status, is_active, created_at"
+      )
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setError("Не удалось загрузить список трендов.");
+      setListLoading(false);
+      return;
+    }
+
+    setTrends(data || []);
+    setListLoading(false);
+  }
+
+  useEffect(() => {
+    loadTrends();
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -56,15 +90,55 @@ export default function AdminPage() {
         return;
       }
 
-      setMessage("Тренд добавлен. Обнови главную страницу, чтобы его увидеть.");
+      setMessage("Тренд добавлен.");
       setForm((prev) => ({
         ...initialForm,
         adminPassword: prev.adminPassword,
       }));
+      await loadTrends();
     } catch (err) {
       setError("Произошла ошибка сети или сервера.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDeactivate(id) {
+    if (!form.adminPassword) {
+      setError("Сначала введи пароль администратора в верхнем поле.");
+      return;
+    }
+
+    setDeactivateLoadingId(id);
+    setMessage("");
+    setError("");
+
+    try {
+      const response = await fetch("/api/admin/trends", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id,
+          adminPassword: form.adminPassword,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setError(result.error || "Не удалось отключить тренд.");
+        setDeactivateLoadingId("");
+        return;
+      }
+
+      setMessage("Тренд отключён.");
+      await loadTrends();
+    } catch (err) {
+      setError("Произошла ошибка сети или сервера.");
+    } finally {
+      setDeactivateLoadingId("");
     }
   }
 
@@ -75,7 +149,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 text-slate-900">
-      <div className="max-w-4xl mx-auto px-4 py-8 md:px-6 lg:px-8">
+      <div className="max-w-5xl mx-auto px-4 py-8 md:px-6 lg:px-8">
         <div className={cardClass}>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
@@ -83,7 +157,8 @@ export default function AdminPage() {
                 Админка трендов
               </h1>
               <p className="text-slate-600 mt-2">
-                Здесь ты можешь добавлять новые тренды без SQL.
+                Здесь ты можешь добавлять новые тренды без SQL и управлять уже
+                созданными.
               </p>
             </div>
 
@@ -235,6 +310,78 @@ export default function AdminPage() {
             {loading ? "Добавление..." : "Добавить тренд"}
           </button>
         </form>
+
+        <div className={`${cardClass} mt-6`}>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-2xl font-semibold">Все тренды</h2>
+              <p className="text-slate-600 mt-1">
+                Здесь можно быстро посмотреть текущие записи и отключить лишние.
+              </p>
+            </div>
+
+            <button
+              onClick={loadTrends}
+              className="px-4 py-2 rounded-2xl text-sm font-medium border bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+            >
+              Обновить список
+            </button>
+          </div>
+
+          {listLoading ? (
+            <div className="mt-6 text-slate-600">Загрузка списка...</div>
+          ) : trends.length === 0 ? (
+            <div className="mt-6 text-slate-600">Трендов пока нет.</div>
+          ) : (
+            <div className="mt-6 space-y-4">
+              {trends.map((trend) => (
+                <div
+                  key={trend.id}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                >
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <div className="text-xs text-slate-500">
+                        {trend.category} · {trend.region || "Global"}
+                      </div>
+                      <div className="font-semibold text-lg mt-1">
+                        {trend.title}
+                      </div>
+                      <div className="text-sm text-slate-500 mt-2">
+                        Статус: {statusLabel(trend.trend_status)} ·{" "}
+                        {trend.is_active ? "Активен" : "Отключён"}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 flex-wrap">
+                      {trend.is_active ? (
+                        <button
+                          onClick={() => handleDeactivate(trend.id)}
+                          disabled={deactivateLoadingId === trend.id}
+                          className="px-4 py-2 rounded-2xl text-sm font-medium bg-slate-900 text-white disabled:opacity-60"
+                        >
+                          {deactivateLoadingId === trend.id
+                            ? "Отключение..."
+                            : "Отключить"}
+                        </button>
+                      ) : (
+                        <span className="px-4 py-2 rounded-2xl text-sm font-medium border border-slate-200 bg-white text-slate-500">
+                          Уже отключён
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {trend.audio ? (
+                    <div className="text-sm text-slate-600 mt-3">
+                      Звук: {trend.audio}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
