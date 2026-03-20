@@ -30,8 +30,10 @@ function statusLabel(value) {
 export default function AdminPage() {
   const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(false);
-  const [deactivateLoadingId, setDeactivateLoadingId] = useState("");
   const [editingId, setEditingId] = useState("");
+  const [deactivateLoadingId, setDeactivateLoadingId] = useState("");
+  const [restoreLoadingId, setRestoreLoadingId] = useState("");
+  const [deleteLoadingId, setDeleteLoadingId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [trends, setTrends] = useState([]);
@@ -132,9 +134,7 @@ export default function AdminPage() {
         return;
       }
 
-      setMessage(
-        editingId ? "Тренд обновлён." : "Тренд добавлен."
-      );
+      setMessage(editingId ? "Тренд обновлён." : "Тренд добавлен.");
 
       setForm((prev) => ({
         ...initialForm,
@@ -150,19 +150,61 @@ export default function AdminPage() {
     }
   }
 
-  async function handleDeactivate(id) {
+  async function setTrendActiveState(id, isActive, type) {
     if (!form.adminPassword) {
       setError("Сначала введи пароль администратора в верхнем поле.");
       return;
     }
 
-    setDeactivateLoadingId(id);
+    setMessage("");
+    setError("");
+
+    if (type === "deactivate") setDeactivateLoadingId(id);
+    if (type === "restore") setRestoreLoadingId(id);
+
+    try {
+      const response = await fetch("/api/admin/trends", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id,
+          is_active: isActive,
+          adminPassword: form.adminPassword,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setError(result.error || "Не удалось изменить статус тренда.");
+        return;
+      }
+
+      setMessage(isActive ? "Тренд восстановлен." : "Тренд отключён.");
+      await loadTrends();
+    } catch {
+      setError("Произошла ошибка сети или сервера.");
+    } finally {
+      setDeactivateLoadingId("");
+      setRestoreLoadingId("");
+    }
+  }
+
+  async function deleteTrend(id) {
+    if (!form.adminPassword) {
+      setError("Сначала введи пароль администратора в верхнем поле.");
+      return;
+    }
+
+    setDeleteLoadingId(id);
     setMessage("");
     setError("");
 
     try {
       const response = await fetch("/api/admin/trends", {
-        method: "PATCH",
+        method: "DELETE",
         headers: {
           "Content-Type": "application/json",
         },
@@ -175,17 +217,21 @@ export default function AdminPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        setError(result.error || "Не удалось отключить тренд.");
-        setDeactivateLoadingId("");
+        setError(result.error || "Не удалось удалить тренд.");
+        setDeleteLoadingId("");
         return;
       }
 
-      setMessage("Тренд отключён.");
+      if (editingId === id) {
+        cancelEditing();
+      }
+
+      setMessage("Тренд удалён.");
       await loadTrends();
     } catch {
       setError("Произошла ошибка сети или сервера.");
     } finally {
-      setDeactivateLoadingId("");
+      setDeleteLoadingId("");
     }
   }
 
@@ -204,7 +250,8 @@ export default function AdminPage() {
                 Админка трендов
               </h1>
               <p className="text-slate-600 mt-2">
-                Здесь ты можешь добавлять, редактировать и отключать тренды.
+                Здесь ты можешь добавлять, редактировать, восстанавливать,
+                отключать и удалять тренды.
               </p>
             </div>
 
@@ -403,7 +450,7 @@ export default function AdminPage() {
             <div>
               <h2 className="text-2xl font-semibold">Все тренды</h2>
               <p className="text-slate-600 mt-1">
-                Здесь можно редактировать записи и отключать лишние.
+                Здесь можно редактировать, отключать, восстанавливать и удалять.
               </p>
             </div>
 
@@ -452,7 +499,7 @@ export default function AdminPage() {
                       {trend.is_active ? (
                         <button
                           type="button"
-                          onClick={() => handleDeactivate(trend.id)}
+                          onClick={() => setTrendActiveState(trend.id, false, "deactivate")}
                           disabled={deactivateLoadingId === trend.id}
                           className="px-4 py-2 rounded-2xl text-sm font-medium bg-slate-900 text-white disabled:opacity-60"
                         >
@@ -461,10 +508,26 @@ export default function AdminPage() {
                             : "Отключить"}
                         </button>
                       ) : (
-                        <span className="px-4 py-2 rounded-2xl text-sm font-medium border border-slate-200 bg-white text-slate-500">
-                          Уже отключён
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setTrendActiveState(trend.id, true, "restore")}
+                          disabled={restoreLoadingId === trend.id}
+                          className="px-4 py-2 rounded-2xl text-sm font-medium border bg-white text-slate-700 border-slate-200 hover:border-slate-300 disabled:opacity-60"
+                        >
+                          {restoreLoadingId === trend.id
+                            ? "Восстановление..."
+                            : "Восстановить"}
+                        </button>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={() => deleteTrend(trend.id)}
+                        disabled={deleteLoadingId === trend.id}
+                        className="px-4 py-2 rounded-2xl text-sm font-medium border bg-white text-rose-700 border-rose-200 hover:border-rose-300 disabled:opacity-60"
+                      >
+                        {deleteLoadingId === trend.id ? "Удаление..." : "Удалить"}
+                      </button>
                     </div>
                   </div>
 

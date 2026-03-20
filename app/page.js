@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Flame, TrendingUp, ShieldAlert, Sparkles, PlayCircle, BarChart3, CheckCircle2, Save } from 'lucide-react';
+import { Upload, Flame, TrendingUp, ShieldAlert, Sparkles, PlayCircle, BarChart3, CheckCircle2, Save, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 const seedTrends = [
@@ -197,6 +197,7 @@ export default function TikTokCreatorScoutDemo() {
   const [analysisAdminPassword, setAnalysisAdminPassword] = useState('');
   const [saveAnalysisLoading, setSaveAnalysisLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [deleteAnalysisLoadingId, setDeleteAnalysisLoadingId] = useState('');
   const [analysisSaveMessage, setAnalysisSaveMessage] = useState('');
   const [analysisSaveError, setAnalysisSaveError] = useState('');
   const [analysisHistory, setAnalysisHistory] = useState([]);
@@ -459,6 +460,43 @@ export default function TikTokCreatorScoutDemo() {
       setAnalysisSaveError('Произошла ошибка сети или сервера при загрузке истории.');
     } finally {
       setHistoryLoading(false);
+    }
+  }
+
+  async function deleteAnalysis(id) {
+    if (!analysisAdminPassword) {
+      setAnalysisSaveError('Сначала введи пароль администратора для удаления анализа.');
+      setAnalysisSaveMessage('');
+      return;
+    }
+
+    setDeleteAnalysisLoadingId(id);
+    setAnalysisSaveError('');
+    setAnalysisSaveMessage('');
+
+    try {
+      const response = await fetch(`/api/video-analyses/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ adminPassword: analysisAdminPassword }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setAnalysisSaveError(result.error || 'Не удалось удалить анализ.');
+        setDeleteAnalysisLoadingId('');
+        return;
+      }
+
+      setAnalysisSaveMessage('Анализ удалён.');
+      await loadAnalysisHistory();
+    } catch (error) {
+      setAnalysisSaveError('Произошла ошибка сети или сервера при удалении анализа.');
+    } finally {
+      setDeleteAnalysisLoadingId('');
     }
   }
 
@@ -773,12 +811,21 @@ export default function TikTokCreatorScoutDemo() {
                     <div className="space-y-3 mt-3">
                       {analysisHistory.map((item) => (
                         <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                          <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
                             <div>
                               <div className="font-medium">{item.file_name || 'Без названия'}</div>
                               <div className="text-xs text-slate-500 mt-1">{new Date(item.created_at).toLocaleString()}</div>
                             </div>
-                            <div className="text-sm font-semibold">{item.verdict}</div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <div className="text-sm font-semibold">{item.verdict}</div>
+                              <button
+                                onClick={() => deleteAnalysis(item.id)}
+                                disabled={deleteAnalysisLoadingId === item.id}
+                                className="px-3 py-2 rounded-2xl text-sm font-medium border bg-white text-slate-700 border-slate-200 hover:border-slate-300 disabled:opacity-60"
+                              >
+                                {deleteAnalysisLoadingId === item.id ? 'Удаление...' : 'Удалить'}
+                              </button>
+                            </div>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3 text-sm">
                             <div className="rounded-2xl border border-slate-200 bg-white p-3">

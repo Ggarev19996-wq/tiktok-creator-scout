@@ -213,9 +213,12 @@ export async function PATCH(request) {
       );
     }
 
+    const nextActiveState =
+      typeof body.is_active === "boolean" ? body.is_active : false;
+
     const { data, error } = await adminClient
       .from("trends")
-      .update({ is_active: false })
+      .update({ is_active: nextActiveState })
       .eq("id", body.id)
       .select()
       .single();
@@ -229,12 +232,64 @@ export async function PATCH(request) {
 
     return NextResponse.json({
       success: true,
-      message: "Тренд отключён.",
+      message: nextActiveState ? "Тренд восстановлен." : "Тренд отключён.",
       data,
     });
   } catch {
     return NextResponse.json(
-      { error: "Ошибка сервера при отключении тренда." },
+      { error: "Ошибка сервера при изменении статуса тренда." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const adminClient = getAdminClient();
+
+    if (!adminClient) {
+      return NextResponse.json(
+        { error: "Не найдены переменные Supabase для сервера." },
+        { status: 500 }
+      );
+    }
+
+    const body = await request.json();
+    const passwordCheck = checkAdminPassword(body);
+
+    if (!passwordCheck.ok) {
+      return NextResponse.json(
+        { error: passwordCheck.message },
+        { status: 401 }
+      );
+    }
+
+    if (!body.id) {
+      return NextResponse.json(
+        { error: "Не передан id тренда для удаления." },
+        { status: 400 }
+      );
+    }
+
+    const { error } = await adminClient
+      .from("trends")
+      .delete()
+      .eq("id", body.id);
+
+    if (error) {
+      return NextResponse.json(
+        { error: `Ошибка Supabase: ${error.message}` },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Тренд удалён.",
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Ошибка сервера при удалении тренда." },
       { status: 500 }
     );
   }
