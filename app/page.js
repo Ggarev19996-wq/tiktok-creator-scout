@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Flame, TrendingUp, ShieldAlert, Sparkles, PlayCircle, BarChart3, CheckCircle2 } from 'lucide-react';
+import { Upload, Flame, TrendingUp, ShieldAlert, Sparkles, PlayCircle, BarChart3, CheckCircle2, Save } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 const seedTrends = [
@@ -194,6 +194,12 @@ export default function TikTokCreatorScoutDemo() {
   const [dbTrends, setDbTrends] = useState([]);
   const [trendsLoading, setTrendsLoading] = useState(true);
   const [trendsError, setTrendsError] = useState('');
+  const [analysisAdminPassword, setAnalysisAdminPassword] = useState('');
+  const [saveAnalysisLoading, setSaveAnalysisLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [analysisSaveMessage, setAnalysisSaveMessage] = useState('');
+  const [analysisSaveError, setAnalysisSaveError] = useState('');
+  const [analysisHistory, setAnalysisHistory] = useState([]);
   const videoRef = useRef(null);
 
   const [inputs, setInputs] = useState({
@@ -355,6 +361,106 @@ export default function TikTokCreatorScoutDemo() {
       });
     };
   };
+
+  async function saveCurrentAnalysis() {
+    if (!analysisAdminPassword) {
+      setAnalysisSaveError('Сначала введи пароль администратора для сохранения анализа.');
+      setAnalysisSaveMessage('');
+      return;
+    }
+
+    setSaveAnalysisLoading(true);
+    setAnalysisSaveError('');
+    setAnalysisSaveMessage('');
+
+    try {
+      const response = await fetch('/api/video-analyses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'save',
+          adminPassword: analysisAdminPassword,
+          file_name: fileMeta?.name || 'Без названия',
+          file_type: fileMeta?.type || 'video/*',
+          duration_seconds: fileMeta?.duration || 0,
+          file_size_mb: fileMeta?.sizeMb || 0,
+          hook: inputs.hook,
+          trend_match: inputs.trendMatch,
+          beat_sync: inputs.beatSync,
+          visual_clarity: inputs.visualClarity,
+          face_presence: inputs.facePresence,
+          caption_strength: inputs.captionStrength,
+          originality: inputs.originality,
+          replay_value: inputs.replayValue,
+          simplicity: inputs.simplicity,
+          algorithm_chance: algorithmChance,
+          like_potential: likePotential,
+          view_potential: viewPotential,
+          verdict: videoVerdict,
+          matched_ideas: matchedIdeas.map((item) => ({
+            title: item.title,
+            category: item.category,
+            score: item.score,
+          })),
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setAnalysisSaveError(result.error || 'Не удалось сохранить анализ.');
+        setSaveAnalysisLoading(false);
+        return;
+      }
+
+      setAnalysisSaveMessage('Анализ сохранён в базу.');
+      await loadAnalysisHistory();
+    } catch (error) {
+      setAnalysisSaveError('Произошла ошибка сети или сервера при сохранении анализа.');
+    } finally {
+      setSaveAnalysisLoading(false);
+    }
+  }
+
+  async function loadAnalysisHistory() {
+    if (!analysisAdminPassword) {
+      setAnalysisSaveError('Сначала введи пароль администратора для загрузки истории.');
+      setAnalysisSaveMessage('');
+      return;
+    }
+
+    setHistoryLoading(true);
+    setAnalysisSaveError('');
+
+    try {
+      const response = await fetch('/api/video-analyses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'list',
+          adminPassword: analysisAdminPassword,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setAnalysisSaveError(result.error || 'Не удалось загрузить историю анализов.');
+        setHistoryLoading(false);
+        return;
+      }
+
+      setAnalysisHistory(result.data || []);
+    } catch (error) {
+      setAnalysisSaveError('Произошла ошибка сети или сервера при загрузке истории.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
 
   const scoreBar = (value) => (
     <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
@@ -611,6 +717,87 @@ export default function TikTokCreatorScoutDemo() {
                       <div className="text-sm text-slate-600 mt-2">{item.note}</div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                {sectionTitle(<Save className="h-5 w-5" />, 'Сохранение анализа', 'История анализов хранится в базе и загружается по админ-паролю.')}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Пароль администратора</label>
+                  <input
+                    type="password"
+                    value={analysisAdminPassword}
+                    onChange={(e) => setAnalysisAdminPassword(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400"
+                    placeholder="Введи ADMIN_PASSWORD"
+                  />
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    onClick={saveCurrentAnalysis}
+                    disabled={saveAnalysisLoading}
+                    className="px-5 py-3 rounded-2xl text-sm font-medium bg-slate-900 text-white disabled:opacity-60"
+                  >
+                    {saveAnalysisLoading ? 'Сохранение...' : 'Сохранить анализ'}
+                  </button>
+
+                  <button
+                    onClick={loadAnalysisHistory}
+                    disabled={historyLoading}
+                    className="px-5 py-3 rounded-2xl text-sm font-medium border bg-white text-slate-700 border-slate-200 hover:border-slate-300 disabled:opacity-60"
+                  >
+                    {historyLoading ? 'Загрузка...' : 'Загрузить историю'}
+                  </button>
+                </div>
+
+                {analysisSaveMessage ? (
+                  <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-700">
+                    {analysisSaveMessage}
+                  </div>
+                ) : null}
+
+                {analysisSaveError ? (
+                  <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700">
+                    {analysisSaveError}
+                  </div>
+                ) : null}
+
+                <div className="mt-6">
+                  <div className="text-sm font-medium text-slate-900">Последние анализы</div>
+                  {historyLoading ? (
+                    <div className="text-sm text-slate-500 mt-3">Загрузка истории...</div>
+                  ) : analysisHistory.length === 0 ? (
+                    <div className="text-sm text-slate-500 mt-3">История пока пустая или ещё не загружена.</div>
+                  ) : (
+                    <div className="space-y-3 mt-3">
+                      {analysisHistory.map((item) => (
+                        <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-medium">{item.file_name || 'Без названия'}</div>
+                              <div className="text-xs text-slate-500 mt-1">{new Date(item.created_at).toLocaleString()}</div>
+                            </div>
+                            <div className="text-sm font-semibold">{item.verdict}</div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3 text-sm">
+                            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                              <div className="text-slate-500 text-xs">Алгоритмы</div>
+                              <div className="font-semibold mt-1">{item.algorithm_chance}/100</div>
+                            </div>
+                            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                              <div className="text-slate-500 text-xs">Лайки</div>
+                              <div className="font-semibold mt-1">{item.like_potential}/100</div>
+                            </div>
+                            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                              <div className="text-slate-500 text-xs">Просмотры</div>
+                              <div className="font-semibold mt-1">{item.view_potential}/100</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
