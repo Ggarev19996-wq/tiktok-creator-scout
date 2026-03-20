@@ -31,6 +31,7 @@ export default function AdminPage() {
   const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(false);
   const [deactivateLoadingId, setDeactivateLoadingId] = useState("");
+  const [editingId, setEditingId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [trends, setTrends] = useState([]);
@@ -49,7 +50,7 @@ export default function AdminPage() {
     const { data, error } = await supabase
       .from("trends")
       .select(
-        "id, category, title, audio, region, trend_status, is_active, created_at"
+        "id, category, title, audio, region, velocity, engagement, repeatability, saturation, complexity, face_fit, risk, note, trend_status, is_active, created_at"
       )
       .order("created_at", { ascending: false });
 
@@ -67,6 +68,42 @@ export default function AdminPage() {
     loadTrends();
   }, []);
 
+  function startEditing(trend) {
+    setMessage("");
+    setError("");
+    setEditingId(trend.id);
+
+    setForm((prev) => ({
+      ...prev,
+      category: trend.category || "Танцы",
+      title: trend.title || "",
+      audio: trend.audio || "",
+      region: trend.region || "Global",
+      velocity: trend.velocity ?? 70,
+      engagement: trend.engagement ?? 70,
+      repeatability: trend.repeatability ?? 80,
+      saturation: trend.saturation ?? 30,
+      complexity: trend.complexity ?? 20,
+      face_fit: trend.face_fit ?? 80,
+      risk: trend.risk ?? 20,
+      note: trend.note || "",
+      trend_status: trend.trend_status || "rising",
+    }));
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEditing() {
+    setEditingId("");
+    setMessage("");
+    setError("");
+
+    setForm((prev) => ({
+      ...initialForm,
+      adminPassword: prev.adminPassword,
+    }));
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true);
@@ -74,29 +111,39 @@ export default function AdminPage() {
     setError("");
 
     try {
+      const method = editingId ? "PUT" : "POST";
+
       const response = await fetch("/api/admin/trends", {
-        method: "POST",
+        method,
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          id: editingId || undefined,
+        }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        setError(result.error || "Не удалось добавить тренд.");
+        setError(result.error || "Не удалось сохранить тренд.");
         setLoading(false);
         return;
       }
 
-      setMessage("Тренд добавлен.");
+      setMessage(
+        editingId ? "Тренд обновлён." : "Тренд добавлен."
+      );
+
       setForm((prev) => ({
         ...initialForm,
         adminPassword: prev.adminPassword,
       }));
+
+      setEditingId("");
       await loadTrends();
-    } catch (err) {
+    } catch {
       setError("Произошла ошибка сети или сервера.");
     } finally {
       setLoading(false);
@@ -135,7 +182,7 @@ export default function AdminPage() {
 
       setMessage("Тренд отключён.");
       await loadTrends();
-    } catch (err) {
+    } catch {
       setError("Произошла ошибка сети или сервера.");
     } finally {
       setDeactivateLoadingId("");
@@ -157,8 +204,7 @@ export default function AdminPage() {
                 Админка трендов
               </h1>
               <p className="text-slate-600 mt-2">
-                Здесь ты можешь добавлять новые тренды без SQL и управлять уже
-                созданными.
+                Здесь ты можешь добавлять, редактировать и отключать тренды.
               </p>
             </div>
 
@@ -172,6 +218,29 @@ export default function AdminPage() {
         </div>
 
         <form onSubmit={handleSubmit} className={`${cardClass} mt-6 space-y-6`}>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-2xl font-semibold">
+                {editingId ? "Редактирование тренда" : "Добавление нового тренда"}
+              </h2>
+              <p className="text-slate-600 mt-1">
+                {editingId
+                  ? "Измени поля и нажми «Сохранить изменения»."
+                  : "Заполни форму и нажми «Добавить тренд»."}
+              </p>
+            </div>
+
+            {editingId ? (
+              <button
+                type="button"
+                onClick={cancelEditing}
+                className="px-4 py-2 rounded-2xl text-sm font-medium border bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+              >
+                Отменить редактирование
+              </button>
+            ) : null}
+          </div>
+
           <div>
             <label className="block text-sm font-medium mb-2">
               Пароль администратора
@@ -302,13 +371,31 @@ export default function AdminPage() {
             </div>
           ) : null}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-5 py-3 rounded-2xl text-sm font-medium bg-slate-900 text-white disabled:opacity-60"
-          >
-            {loading ? "Добавление..." : "Добавить тренд"}
-          </button>
+          <div className="flex gap-3 flex-wrap">
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-5 py-3 rounded-2xl text-sm font-medium bg-slate-900 text-white disabled:opacity-60"
+            >
+              {loading
+                ? editingId
+                  ? "Сохранение..."
+                  : "Добавление..."
+                : editingId
+                ? "Сохранить изменения"
+                : "Добавить тренд"}
+            </button>
+
+            {editingId ? (
+              <button
+                type="button"
+                onClick={cancelEditing}
+                className="px-5 py-3 rounded-2xl text-sm font-medium border bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+              >
+                Отмена
+              </button>
+            ) : null}
+          </div>
         </form>
 
         <div className={`${cardClass} mt-6`}>
@@ -316,7 +403,7 @@ export default function AdminPage() {
             <div>
               <h2 className="text-2xl font-semibold">Все тренды</h2>
               <p className="text-slate-600 mt-1">
-                Здесь можно быстро посмотреть текущие записи и отключить лишние.
+                Здесь можно редактировать записи и отключать лишние.
               </p>
             </div>
 
@@ -354,8 +441,17 @@ export default function AdminPage() {
                     </div>
 
                     <div className="flex gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => startEditing(trend)}
+                        className="px-4 py-2 rounded-2xl text-sm font-medium border bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+                      >
+                        Редактировать
+                      </button>
+
                       {trend.is_active ? (
                         <button
+                          type="button"
                           onClick={() => handleDeactivate(trend.id)}
                           disabled={deactivateLoadingId === trend.id}
                           className="px-4 py-2 rounded-2xl text-sm font-medium bg-slate-900 text-white disabled:opacity-60"
